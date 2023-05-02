@@ -1,0 +1,275 @@
+---
+title: "Memo SLR Analysis, Sierra Leone"
+author: "Javier Patron"
+date: "2023-04-30"
+output: html_document
+---
+
+# Sea Level Rise - Scarcies, Sierra Leone
+
+In this project, we will be analyzing the rates of change in the Scarcies region of North Sierra Leone along the Atlantic Ocean coastline. We will be using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines) to gain insights into the changing patterns of coastal movement over time.
+
+In this project, we will be analyzing the impacts of sea level rise in the Scarcies region of North Sierra Leone using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines).
+
+
+```{r, include = F}
+#load required packages
+library(tidyverse)  # for data manipulation and visualization
+library(tmap)  # for interactive thematic mapping
+library(sf) # for working with spatial data
+library(RColorBrewer)  # for color palettes in data visualization
+library(leaflet)  # for interactive web mapping
+library(viridis)  # for color palettes in data visualization
+library(sp)  # for working with spatial data
+library(gridExtra)  # for arranging multiple plots on a page
+library(ggpmisc)  # for adding additional layers to ggplot2 plots
+library(kableExtra)  # for creating nicely formatted tables in RMarkdown
+library(tidytext) # for untokenized functions
+library(knitr) # for tables
+library(raster) # for raster
+library(plotly) # live plots
+```
+
+
+```{r, include = F}
+#Area of project extent
+scarcies_extent <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_extent_shapefile/Scarcies_extent.shp")
+
+#Shorelines
+scarcies_shorelines <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_slr_data/shoreline_annual_2000_2020.shp")
+
+# Annual Coastline rate of change .shp
+scarcies_rate_change <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_slr_data/Coastal_retreat_2000_2021_Scarcies.shp")
+
+
+# Mangtoves in Scarcies Only
+mangroves <- raster("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/MangrovesOnly_2022.tif")
+
+```
+
+
+
+## **II. Visualize Shape files with tmap**
+
+The map below shows the area of interest highlighted in yellow, data points in colors depending on the `rate_time` values, and shorelines in black. You can use the interactive buttons to navigate the map and select the desired layers. To access information related to the rate of change statistics click on each point. **If you want to get a better understanding of the project's scope and the downloaded data, you can zoom out and click on the individual countries to view their respective information.** Also, in the left-hand "layers button", you can navigate to the layer section and remove the "World" layer from the map to improve the level of detail in the satellite images provided by the tmap() function. This will help you analyze the project data more thoroughly.
+
+```{r, echo = F}
+breaks <- c(-Inf, -5, -1, -0.25, 0, 0.25, 1, 5, Inf)
+colors <- c("darkred", "red", "pink", "white","white", "lightblue", "blue", "darkblue")
+
+# create a new column "rate_color" with colors corresponding to the rate_time values
+scarcies_rate_change$rate_color <- ifelse(scarcies_rate_change$rate_time < breaks[1], colors[1],ifelse(scarcies_rate_change$rate_time >= breaks[length(breaks)], colors[length(colors)],
+                                                                                                colors[findInterval(scarcies_rate_change$rate_time, breaks, all.inside = TRUE)]))
+
+# Count the number of colors per point
+count_colors <- scarcies_rate_change |> 
+  group_by(rate_color) |> 
+  summarise(count = n())
+
+color_table <- data.frame(colors = colors,
+                          lower_bound = breaks[-length(breaks)],
+                          upper_bound = breaks[-1]) 
+
+
+# assuming that the column with color rates in scarcies_rate_change is called "rate_color"
+
+color_table <- data.frame(colors = colors,
+                          lower_bound = breaks[-length(breaks)],
+                          upper_bound = breaks[-1]) |> 
+  mutate(count = sapply(colors, function(x) {
+    scarcies_rate_change %>% filter(rate_color == x) %>% nrow()
+  }))
+  
+
+kable(color_table,
+      caption = "Table 1. Data Points Color Breaks") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE)
+
+```
+
+```{r, echo = F, warning = F, message=F}
+
+data(World)
+# Create map
+tmap_mode("view")
+tm_shape(World) +
+  tm_polygons() +
+tm_shape(scarcies_extent) +
+  tm_polygons(col = "yellow", alpha = 0.2) +
+tm_shape(scarcies_shorelines) +
+  tm_lines(lwd = 0.5) +
+  tm_legend(show = TRUE) +
+tm_shape(scarcies_rate_change) +
+  tm_dots(col = "rate_color", alpha = 0.6) +
+tm_shape(mangroves) +
+  tm_raster(palette = "darkgreen", alpha = 0.5, legend.show = TRUE) +
+  tm_layout(title = "Scarcies Sea Level Rise Vulnerability") +
+  tm_view(set.view = c(-12.9,9,8.5))
+```
+
+
+## IV. Tables & Graphs
+
+Lets clean and tidy this data
+
+```{r, include = F}
+
+
+tidy <- scarcies_rate_change %>%
+  select(OBJECTID, uid, rate_time, sig_time, se_time, certainty, outl_time, starts_with("dist_"), starts_with("20")) %>%
+  rename_with(~gsub("^dist_", "", .x), starts_with("dist_2")) %>%
+  mutate(across(starts_with("20"), ~if_else(. == 0, NA_real_, .))) %>% 
+  pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "rate_change_m") %>%
+  filter(year != 2001) |> 
+  select(OBJECTID, uid, rate_time, sig_time, se_time, year, rate_change_m, certainty, outl_time, geometry)
+
+
+```
+
+
+```{r}
+# Identify the noisy points
+# Convert list column to rows using unnest_tokens
+noisy_points <- tidy |> 
+  as.data.frame() |>  # Convert to a data frame to use unnest_tokens
+  unnest_tokens(year, outl_time) |>  # Convert outl_time to rows with year
+  dplyr::select(OBJECTID, uid, year) |>  # Keep only desired columns
+  na.omit() |>  # Remove any rows with missing values
+  distinct()  # Remove any duplicate rows
+
+# Find the rows to remove by joining with the original data frame
+rows_to_remove <- noisy_points %>%
+  inner_join(tidy, by = c("uid", "year"))
+
+# Create a filtered version of the data frame without the noisy rows
+tidy_filtered <- tidy %>%
+  anti_join(rows_to_remove) |>  # Remove the rows found in rows_to_remove
+  dplyr::select(-outl_time, -certainty)  # Remove outl_time and certainty columns
+
+
+yearly_summary <- tidy_filtered %>%
+  as.data.frame() %>%
+  select(-geometry) %>%
+  na.omit() %>%
+  group_by(year) %>%
+  summarize(min_decile = quantile(rate_change_m, probs = 0.1),
+            max_decile = quantile(rate_change_m, probs = 0.9),
+            median = median(rate_change_m),
+            mean = mean(rate_change_m))
+
+
+yearly_summary_long <- yearly_summary |> 
+  pivot_longer(cols = 2:5,
+               names_to = "stat_analysis",
+               values_to = "value") |> 
+  mutate(year = as.numeric(year))
+
+```
+
+Box plot 
+```{r}
+
+ggplot(tidy, aes(x = year, y = rate_change_m)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(x = "Year", y = "Rate change") +
+  ggtitle("Rate Change per Year")
+
+```
+
+## V. OLS Model
+
+Let's now analyze the linear models for both statistical analyses.
+```{r,echo = F, warning=F, message=F}
+
+yearly_summary %>%
+  mutate(year = as.numeric(year)) %>%
+  lm(median ~ year, data = .)
+
+yearly_summary %>%
+  mutate(year = as.numeric(year)) %>%
+  lm(mean ~ year, data = .)
+
+```
+
+Regarding the Median model, the slope of -0.3 implies that with a one-unit rise in the year, the Median is likely to drop by 0.3 units. This indicates that the land might lose or erode 0.304 meters. Conversely, the slope of the Mean model is 1.4, which indicates that for every one unit increase in the year, the Mean is projected to grow by 1.4.
+
+
+
+```{r,echo = F, warning=F, message=F}
+# create ggplot line plot
+my.formula <- y ~ x
+
+yearly_summary_long |> 
+  filter(year %in% c(2000:2020)) |> 
+  filter(stat_analysis %in% c("median", "mean")) |> 
+  ggplot(aes(x = year, y = value, color = stat_analysis)) +
+  geom_line(aes(color = stat_analysis)) +
+  geom_point(size = 1, alpha = 0.5, color = "gray30") +
+  scale_x_continuous(breaks = seq(2000, 2020, by = 2)) +
+  ylim(-40,30) +
+  labs(x = "Year", 
+       y = "Coastal Movement (m)", 
+       color = "Stats_Analysis",
+       title = "Graph #2: Coastal Movement Analysis: Mean and Median Trends",
+       subtitle = "Project: Scarcies, Sierra Leone (2000-2021)",
+       caption = "Data Source: Digital Earth Africa") +
+  theme_classic() +
+  geom_hline(yintercept = 0,
+             color = "gray80",
+             linetype = "dashed") +
+   theme(panel.grid.major = element_line(color = "gray80", linetype = "dashed"),
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values = c("blue", "red"))+
+  geom_smooth(method = lm,
+              formula = my.formula,
+              size= 0.4,
+              se = F,
+              alpha = 0.5) +
+   stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep=  "~~~~~")), 
+               size = 3, 
+               label.y = "top",
+               label.x = "right")
+
+```
+
+
+
+
+## VII. Rate Time Values Analysis: Webpage vs. OLS Analysis by Year
+
+This code is comparing the `rate_time` values obtained from a webpage with those obtained from an OLS analysis for each year, to identify any differences between the two.
+
+```{r, echo = F, warning=F, message=F}
+
+lm_test <- tidy_filtered |> 
+  as.data.frame() |> 
+  select(uid, year, rate_time, rate_change_m) |> 
+  group_by(uid, rate_time) |> 
+  summarize(linear = list(lm(rate_change_m ~ as.numeric(year)))) %>%
+  mutate(linear_coef = map(linear, coef),
+         linear_slope = map_dbl(linear_coef, 2)) |> 
+  select(-c(linear, linear_coef))
+
+kable(head(lm_test), caption = "Table 4. Comparison of the First Six Data Points ") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+
+mean(lm_test$rate_time)
+mean(lm_test$linear_slope)
+  
+```
+
+This table and results provides a comparison between the `rate_time` variable obtained from the digital analysis and the manually computed `linear model`. In the presented table, the first 6 rows of results exhibit the `rate_time` value from Digital Africa and the `linear_slope` value calculated manually. To evaluate the model's overall fit, I computed the mean rate_time value, which equaled 0.2033 meters. Furthermore, the linear slope analysis generated a value of 0.2199, which closely aligns with the mean rate_time.
+
+
+
+## Overall
+
+The OLS line from the median says that we have a trend of 0.304 meters per year. meaning that in 30 years the SLR will increase on average 9.12 meters.
+
+On the other hand the analysis taking all points into consideration says that on average the coast will grow 6 meters
+
+
+

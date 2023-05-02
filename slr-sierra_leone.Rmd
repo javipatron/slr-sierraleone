@@ -1,0 +1,430 @@
+---
+title: "SLR Analysis, Sierra Leone"
+author: "Javier Patron"
+date: "2023-04-13"
+output: html_document
+---
+
+# Sea Level Rise - Scarcies, Sierra Leone
+
+In this project, we will be analyzing the rates of change in the Scarcies region of North Sierra Leone along the Atlantic Ocean coastline. We will be using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines) to gain insights into the changing patterns of coastal movement over time.
+
+In this project, we will be analyzing the impacts of sea level rise in the Scarcies region of North Sierra Leone using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines).
+
+## Table of Content
+
+I. Data
+
+II. Map Visualization
+
+III. Attributes descriptions
+
+IV. Tables & Graphs
+
+V.  OLS Model results
+
+VI. Certainty
+
+VII. Rate Time Analysis
+
+## *I. Data*
+
+-   A shapefile defining our area of interest in the Scarcies region.
+
+-   An annual coastline and shoreline shapefile that spans from 2000 to 2022, providing detailed information on the annual linear rate of change of the Atlantic Ocean coastline, as well as other parameters such as errotion or growth, standard errors, and significance. This data set is derived from satellite imagery and uses automated algorithms to map the coastline and shoreline, ensuring a high level of accuracy and consistency.
+
+-   A data set of 3,237 data points containing information such as the annual linear rate of change of the Atlantic Ocean shoreline, as well as other parameters such as errosion or growth, standard errors, significance, and the maximum and minimum years of annual shoreline movement. This data set is based on the same satellite imagery as the annual coastline and shoreline data set and provides a more detailed view of changes to the shoreline over time. By analyzing this data, we aim to gain insights into the vulnerability of the region to sea level rise and provide valuable information for decision-makers and stakeholders seeking to mitigate its potential impacts.
+
+```{r, include = F}
+#load required packages
+library(tidyverse)  # for data manipulation and visualization
+library(tmap)  # for interactive thematic mapping
+library(sf)  # for working with spatial data
+library(RColorBrewer)  # for color palettes in data visualization
+library(leaflet)  # for interactive web mapping
+library(viridis)  # for color palettes in data visualization
+library(sp)  # for working with spatial data
+library(gridExtra)  # for arranging multiple plots on a page
+library(ggpmisc)  # for adding additional layers to ggplot2 plots
+library(kableExtra)  # for creating nicely formatted tables in RMarkdown
+library(tidytext) # for untokenized functions
+library(knitr) # for tables
+library(raster) # for raster
+library(plotly) # live plots
+library(DescTools)
+```
+
+```{r, include = F}
+#Area of project extent
+scarcies_extent <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_extent_shapefile/Scarcies_extent.shp")
+
+#Shorelines
+scarcies_shorelines <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_slr_data/shoreline_annual_2000_2020.shp")
+
+# Annual Coastline rate of change .shp
+scarcies_rate_change <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_slr_data/Coastal_retreat_2000_2021_Scarcies.shp")
+
+
+# Mangtoves in Scarcies Only
+mangroves <- raster("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/MangrovesOnly_2022.tif")
+
+```
+
+## **II. Visualize Shape files with tmap**
+
+The map below shows the area of interest highlighted in yellow, data points in colors depending on the `rate_time` values, and shorelines in black. You can use the interactive buttons to navigate the map and select the desired layers. To access information related to the rate of change statistics click on each point. **If you want to get a better understanding of the project's scope and the downloaded data, you can zoom out and click on the individual countries to view their respective information.** Also, in the left-hand "layers button", you can navigate to the layer section and remove the "World" layer from the map to improve the level of detail in the satellite images provided by the tmap() function. This will help you analyze the project data more thoroughly.
+
+```{r, echo = F}
+# Create a data frame with the summary values
+summary_df <- data.frame(
+  Statistic = c("Min.", "1st Qu.", "Median", "Mean", "3rd Qu.", "Max."),
+  Value = c(-11.1900, -0.7700, -0.2700, 0.2034, 0.3200, 52.9400)
+)
+
+# Create the table using kable
+kable(summary_df, 
+      caption = "Summary of Rate_Time Per Dot") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE)
+
+```
+
+```{r, echo = F}
+breaks <- c(-Inf, -5, -1, -0.25, 0, 0.25, 1, 5, Inf)
+colors <- c("darkred", "red", "pink", "white","white", "lightblue", "blue", "darkblue")
+
+# create a new column "rate_color" with colors corresponding to the rate_time values
+scarcies_rate_change$rate_color <- ifelse(scarcies_rate_change$rate_time < breaks[1], colors[1],ifelse(scarcies_rate_change$rate_time >= breaks[length(breaks)], colors[length(colors)],
+                                                                                                colors[findInterval(scarcies_rate_change$rate_time, breaks, all.inside = TRUE)]))
+
+# Count the number of colors per point
+count_colors <- scarcies_rate_change |> 
+  group_by(rate_color) |> 
+  summarise(count = n())
+
+color_table <- data.frame(colors = colors,
+                          lower_bound = breaks[-length(breaks)],
+                          upper_bound = breaks[-1]) |> 
+  mutate(count = case_when())
+
+
+# assuming that the column with color rates in scarcies_rate_change is called "rate_color"
+color_table <- color_table %>%
+  mutate(count = sapply(colors, function(x) {
+    scarcies_rate_change %>% filter(rate_color == x) %>% nrow()
+  }))
+  
+
+kable(color_table,
+      caption = "Table 1. Data Points Color Breaks") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE)
+
+```
+
+```{r, echo = F, warning = F, message=F}
+
+data(World)
+# Create map
+tmap_mode("view")
+tm_shape(World) +
+  tm_polygons() +
+tm_shape(scarcies_extent) +
+  tm_polygons(col = "yellow", alpha = 0.2) +
+tm_shape(scarcies_shorelines) +
+  tm_lines(lwd = 0.5) +
+  tm_legend(show = TRUE) +
+tm_shape(scarcies_rate_change) +
+  tm_dots(col = "rate_color", alpha = 0.6) +
+tm_shape(mangroves) +
+  tm_raster(palette = "darkgreen", alpha = 0.5, legend.show = TRUE) +
+  tm_layout(title = "Scarcies Sea Level Rise Vulnerability") +
+  tm_view(set.view = c(-12.9,9,8.5))
+```
+
+## **III. Rate of change attribute descriptions**
+
+| **Attribute** | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|-------------------------|-----------------------------------------------|
+| rate_time     | Annual rates of change (in metres per year) calculated by linearly regressing annual shoreline distances against time (excluding outliers). Negative values indicate retreat and positive values indicate growth.                                                                                                                                                                                                                          |
+| sig_time      | Significance (p-value) of the linear relationship between annual shoreline distances and time. Small values (e.g. p-value \< 0.01) may indicate a coastline is undergoing consistent coastal change through time.                                                                                                                                                                                                                          |
+| se_time       | Standard error (in metres) of the linear relationship between annual shoreline distances and time. This can be used to generate confidence intervals around the rate of change given by rate_time (e.g. 95% confidence interval = se_time \* 1.96).                                                                                                                                                                                        |
+| outl_time     | Individual annual shoreline are noisy estimators of coastline position that can be influenced by environmental conditions (e.g. clouds, breaking waves, sea spray) or modelling issues (e.g. poor tidal modelling results or limited clear satellite observations). To obtain reliable rates of change, outlier shorelines are excluded using a robust Median Absolute Deviation outlier detection algorithm, and recorded in this column. |
+| sce           | Shoreline Change Envelope (SCE). A measure of the maximum change or variability across all annual shorelines, calculated by computing the maximum distance between any two annual shoreline (excluding outliers). This statistic excludes sub-annual shoreline variability.                                                                                                                                                                |
+| nsm           | Net Shoreline Movement (NSM). The distance between the oldest (2000) and most recent annual shoreline (excluding outliers). Negative values indicate the coastline retreated between the oldest and most recent shoreline; positive values indicate growth. This statistic does not reflect sub-annual shoreline variability, so will underestimate the full extent of variability at any given location.                                  |
+| max_year      | The year that annual shorelines were at their maximum (i.e. located furthest towards the ocean) (excluding outliers). This statistic excludes sub-annual shoreline variability.                                                                                                                                                                                                                                                            |
+| min_year      | The year that annual shorelines were at their minimum (i.e. located furthest inland) (excluding outliers). This statistic excludes sub-annual shoreline variability.                                                                                                                                                                                                                                                                       |
+
+```{r, include = F}
+
+#Below is a quick statistical summary for the `scarcies_rate_change` data set provides the minimum, median, and maximum values for each column. This information is valuable in gaining insight into the data set and observing the behavior of the variables.
+#summary(scarcies_rate_change)
+```
+
+## IV. Tables & Graphs
+After reading and cleaning the data, we made the following significant changes or modifications to the original data:
+
+1) We removed all data from the year 2001 due to its unreliability, which contained many zero values.
+2) We applied the winsorize function to reduce the impact of outliers in the dataset.
+
+```{r, include = F}
+
+tidy <- scarcies_rate_change %>%
+  select(OBJECTID, uid, rate_time, sig_time, se_time, certainty, outl_time, starts_with("dist_"), starts_with("20")) %>%
+  rename_with(~gsub("^dist_", "", .x), starts_with("dist_2")) %>%
+  mutate(across(starts_with("20"), ~if_else(. == 0, NA_real_, .))) %>% 
+  pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "rate_change_m") %>%
+  filter(year != 2001) |> 
+  select(OBJECTID, uid, rate_time, sig_time, se_time, year, rate_change_m, certainty, outl_time, geometry)
+
+
+# WINSORIZE TO REMOVE OUTLIERS
+
+# tidy <- scarcies_rate_change %>%
+#   select(OBJECTID, uid, rate_time, sig_time, se_time, certainty, outl_time, starts_with("dist_"), starts_with("20")) %>%
+#   rename_with(~gsub("^dist_", "", .x), starts_with("dist_2")) %>%
+#   pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "rate_change_m") %>%
+#   filter(year != 2001) %>%
+#   mutate(across(starts_with("20"), ~if_else(. == 0, NA_real_, .))) %>% 
+#   mutate(across(starts_with("20"), ~Winsorize(., probs = c(0, 0.85), na.rm = TRUE))) %>%
+#   select(OBJECTID, uid, rate_time, sig_time, se_time, year, rate_change_m, certainty, outl_time, geometry)
+
+
+
+#Check the number of NA or cero points
+bad <- scarcies_rate_change %>%
+  as.data.frame() |>
+  select(OBJECTID, uid, rate_time, sig_time, se_time, certainty, outl_time, starts_with("dist_"), starts_with("20")) %>%
+  rename_with(~gsub("^dist_", "", .x), starts_with("dist_2")) %>%
+  mutate(across(starts_with("20"), ~if_else(. == 0, NA_real_, .))) %>% 
+  pivot_longer(cols = starts_with("20"), names_to = "year", values_to = "rate_change_m") |> 
+  group_by(year) %>%
+  summarize(num_na = sum(is.na(rate_change_m)))
+
+```
+
+```{r, include = F}
+#Identify the noisy points
+# convert list column to rows
+noisy_points <- tidy |> 
+  as.data.frame() |> 
+  unnest_tokens(year, outl_time) |> 
+  dplyr::select(OBJECTID, uid, year) |> 
+  na.omit() |> 
+  distinct()
+
+rows_to_remove <- noisy_points %>%
+  inner_join(tidy, by = c("uid", "year"))
+
+tidy_filtered <- tidy %>%
+  anti_join(rows_to_remove) |> 
+  dplyr::select(-outl_time, -certainty)
+```
+
+```{r, echo = FALSE, warning=F, message=F}
+
+yearly_summary <- tidy_filtered %>%
+  as.data.frame() %>%
+  select(-geometry) %>%
+  na.omit() %>%
+  group_by(year) %>%
+  summarize(min_decile = quantile(rate_change_m, probs = 0.1),
+            max_decile = quantile(rate_change_m, probs = 0.9),
+            median = median(rate_change_m),
+            mean = mean(rate_change_m))
+
+# Add the all column at the end
+yearly_summary <- yearly_summary |> 
+  mutate(year = as.character(year)) |> 
+   add_row(year = "Total Average ",
+          min_decile = mean(df_wide2$min_decile),
+          median = mean(df_wide2$median),
+          mean = mean(df_wide2$mean),
+         max_decile = mean(df_wide2$max_decile))
+
+# Print the table
+kable(yearly_summary, 
+      caption = "Table 1. Annual Rates of Shoreline Change in Scarcies, Sierra Leone (2000-2020) (in meters)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE)
+
+yearly_summary_long <- yearly_summary |> 
+  pivot_longer(cols = 2:5,
+               names_to = "stat_analysis",
+               values_to = "value") |> 
+  mutate(year = as.numeric(year))
+
+
+```
+
+"The values presented in Table 1 indicate the change in distance affected for each year, with **negative values denoting retreat (i.e., shoreline erosion) and positive values indicating pro-gradation (i.e., shoreline growth) over time**. The median and mean values provide a summary of the central tendency of this change.
+
+The `min_decile` and `max_decile` represent the values below and above which 10% of the data points fall, respectively. These values correspond to the 10th and 90th percentiles of the distribution, and can provide information about the range and distribution of the data."
+
+```{r,echo = F, warning=F, message=F}
+
+# create ggplot line plot
+all_graph <- ggplot(yearly_summary_long, aes(x = year, y = value, color = stat_analysis)) +
+  geom_line() +
+  geom_point(size = 0.5, alpha = 0.5, color = "gray30") +
+  scale_x_continuous(breaks = seq(2000, 2020, by = 2)) +
+  labs(x = "Year", 
+       y = "Coastal Movement (m)", 
+       color = "Stats_Analysis",
+       title = "Graph #1: Annual Rates of Change in Scarcies Coastline from 2000 to 2020",
+       subtitle = "Project: Scarcies, Sierra Leone",
+       caption = "Data Source: Digital Earth Africa") +
+  theme_classic() +
+   theme(panel.grid.major = element_line(color = "gray89", 
+                                         linetype = "dashed"),
+        panel.grid.minor = element_blank())
+
+ggplotly(all_graph)
+```
+
+This plot shows the annual rates of change in the coastline of the Scarcies area in Sierra Leone over the period 2000-2020. The x-axis represents the years from 2000 to 2020, while the y-axis shows the distance moved by the shoreline in meters. The plot is color-coded according to the type of statistical analysis used to derive the rates of change. Data source: [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines).
+
+```{r,echo = F, warning=F, message=F}
+# create ggplot line plot
+my.formula <- y ~ x
+
+yearly_summary_long |> 
+  filter(year %in% c(2000:2020)) |> 
+  filter(stat_analysis %in% c("median", "mean")) |> 
+  ggplot(aes(x = year, y = value, color = stat_analysis)) +
+  geom_line(aes(color = stat_analysis)) +
+  geom_point(size = 1, alpha = 0.5, color = "gray30") +
+  scale_x_continuous(breaks = seq(2000, 2020, by = 2)) +
+  ylim(-40,30) +
+  labs(x = "Year", 
+       y = "Coastal Movement (m)", 
+       color = "Stats_Analysis",
+       title = "Graph #2: Coastal Movement Analysis: Mean and Median Trends",
+       subtitle = "Project: Scarcies, Sierra Leone (2000-2021)",
+       caption = "Data Source: Digital Earth Africa") +
+  theme_classic() +
+  geom_hline(yintercept = 0,
+             color = "gray80",
+             linetype = "dashed") +
+   theme(panel.grid.major = element_line(color = "gray80", linetype = "dashed"),
+        panel.grid.minor = element_blank()) +
+  scale_color_manual(values = c("blue", "red"))+
+  geom_smooth(method = lm,
+              formula = my.formula,
+              size= 0.4,
+              se = F,
+              alpha = 0.5) +
+   stat_poly_eq(formula = my.formula,
+               aes(label = paste(..eq.label.., ..rr.label.., sep=  "~~~~~")), 
+               size = 3, 
+               label.y = "top",
+               label.x = "right")
+
+```
+
+This second graph `graph #2`focuses on the mean and median lines which are the central tendency using statistics.The blue line, which represents the median, shows a decreasing trend over time indicating erosion in the annual coastal lines. On average, the coastal movement decreases by 0.30 meters each year in the area of interest. On the other hand, the red line, which represents the mean, shows an increasing trend with an average increase of 1.4 meters in coastal movement each year.
+
+The difference between the mean and median is interesting to note. The median removes outlines, whereas the mean considers all data points and has a significant impact on the analysis. **Here we have an opportunity to conduct a more detailed analysis of our area of interest and identify the specific factors that are causing unusual or unexpected.** patterns in our data.
+
+## V. OLS Model
+
+Let's now analyze the linear models for both statistical analyses.
+
+```{r,echo = F, warning=F, message=F}
+
+yearly_summary %>%
+  slice(-22) %>%
+  mutate(year = as.numeric(year)) %>%
+  lm(median ~ year, data = .)
+
+yearly_summary %>%
+  slice(-22) %>%
+  mutate(year = as.numeric(year)) %>%
+  lm(mean ~ year, data = .)
+
+```
+
+Regarding the Median model, the slope of -0.3 implies that with a one-unit rise in the year, the Median is likely to drop by 0.3 units. This indicates that the land might lose or erode 0.304 meters. Conversely, the slope of the Mean model is 1.4, which indicates that for every one unit increase in the year, the Mean is projected to grow by 1.4.
+
+## VI. Certainty
+
+Now, lets now analyze the level of certainty associated with all of the points in our area of interest.
+
+```{r, echo = F, warning=F, message=F}
+scarcies_rate_change |> 
+  as.data.frame() |> 
+  na.omit() |> 
+  select(certainty) |> 
+  group_by(certainty) |> 
+  summarise(data_points = n()) |> 
+  kable(caption = "Table 2. Scarcies Data Points certainty") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE)
+
+```
+
+Now, lets analyze the years with noisy data to identify those with potentially unreliable or inaccurate information.
+
+```{r, echo = F, warning=F, message=F}
+# convert list column to rows
+scarcies_rate_change |> 
+  na.omit() |> 
+  as.data.frame() |> 
+  unnest_tokens(noisy_year, outl_time) |> 
+  group_by(noisy_year) |> 
+  summarise(data_points = n()) |> 
+  kable(caption = "Table 3. Total Noisy Points per year in Scarcies, Sierra Leone") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), 
+                full_width = FALSE)
+
+```
+
+The number of noisy years detected at each point in the Scarcies area is summarized in Table 3. Of the 3,237 data points analyzed, 1,581 had no noisy years, indicating a satisfactory outcome. Table 2 reveals that only 113 data points (3.5%) had insufficient observations.
+
+The variable "outl_time" reveals the years with significant fluctuations in the shoreline position for each data point in the dataset. It is worth noting that during the initial analysis (Step IV. Table and Graphs), 3,920 unreliable data points were excluded. This information can be useful for identifying data points that might need additional scrutiny or modeling to enhance the precision of the shoreline data.
+
+## VII. Rate Time Values Analysis: Webpage vs. OLS Analysis by Year
+
+This code is comparing the `rate_time` values obtained from a webpage with those obtained from an OLS analysis for each year, to identify any differences between the two.
+
+```{r, echo = F, warning=F, message=F}
+
+lm_test <- tidy_filtered |> 
+  as.data.frame() |> 
+  select(uid, year, rate_time, rate_change_m) |> 
+  group_by(uid, rate_time) |> 
+  summarize(linear = list(lm(rate_change_m ~ as.numeric(year)))) %>%
+  mutate(linear_coef = map(linear, coef),
+         linear_slope = map_dbl(linear_coef, 2)) |> 
+  select(-c(linear, linear_coef))
+
+kable(head(lm_test), caption = "Table 4. Comparison of the First Six Data Points ") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+
+
+mean(lm_test$rate_time)
+mean(lm_test$linear_slope)
+  
+```
+
+This table and results provides a comparison between the `rate_time` variable obtained from the digital analysis and the manually computed `linear model`. In the presented table, the first 6 rows of results exhibit the `rate_time` value from Digital Africa and the `linear_slope` value calculated manually. To evaluate the model's overall fit, I computed the mean rate_time value, which equaled 0.2033 meters. Furthermore, the linear slope analysis generated a value of 0.2199, which closely aligns with the mean rate_time.
+
+
+
+
+```{r}
+# Define the ranges of interest
+ranges <- c(-Inf, -100, -50, -25,-1, 0, 1, 25, 50, 100, Inf)
+
+# Use cut() function to create a factor variable indicating which range each value falls into. CHANGE THE COLUMN OF INTEREST HERE
+cuts <- cut(scarcies_rate_change$dist_2020, breaks = ranges)
+
+# Use table() function to count the number of values in each range
+counts <- table(cuts)
+
+# Convert the counts into a data frame with appropriate column names
+df_counts <- data.frame(Range = names(counts), Count = as.vector(counts))
+
+
+```
+
