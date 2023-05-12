@@ -9,8 +9,6 @@ output: html_document
 
 In this project, we will be analyzing the rates of change in the Scarcies region of North Sierra Leone along the Atlantic Ocean coastline. We will be using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines) to gain insights into the changing patterns of coastal movement over time.
 
-In this project, we will be analyzing the impacts of sea level rise in the Scarcies region of North Sierra Leone using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines).
-
 ## Table of Content
 
 I. Data
@@ -145,7 +143,7 @@ tm_shape(mangroves) +
 ## **III. Rate of change attribute descriptions**
 
 | **Attribute** | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                            |
-|-------------------------|----------------------------------------------|
+|--------------------------|----------------------------------------------|
 | rate_time     | Annual rates of change (in metres per year) calculated by linearly regressing annual shoreline distances against time (excluding outliers). Negative values indicate retreat and positive values indicate growth.                                                                                                                                                                                                                          |
 | sig_time      | Significance (p-value) of the linear relationship between annual shoreline distances and time. Small values (e.g. p-value \< 0.01) may indicate a coastline is undergoing consistent coastal change through time.                                                                                                                                                                                                                          |
 | se_time       | Standard error (in metres) of the linear relationship between annual shoreline distances and time. This can be used to generate confidence intervals around the rate of change given by rate_time (e.g. 95% confidence interval = se_time \* 1.96).                                                                                                                                                                                        |
