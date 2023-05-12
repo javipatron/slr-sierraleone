@@ -7,10 +7,7 @@ output: html_document
 
 # Sea Level Rise - Scarcies, Sierra Leone
 
-In this project, we will be analyzing the rates of change in the Scarcies region of North Sierra Leone along the Atlantic Ocean coastline. We will be using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines) to gain insights into the changing patterns of coastal movement over time.
-
 In this project, we will be analyzing the impacts of sea level rise in the Scarcies region of North Sierra Leone using data from the [Digital Earth Africa program](https://docs.digitalearthafrica.org/en/latest/data_specs/Coastlines_specs.html#Annual-Coastlines-Shorelines).
-
 
 ```{r, include = F}
 #load required packages
@@ -30,7 +27,6 @@ library(raster) # for raster
 library(plotly) # live plots
 ```
 
-
 ```{r, include = F}
 #Area of project extent
 scarcies_extent <- st_read("/Users/javipatron/Library/Mobile Documents/com~apple~CloudDocs/Documents/Silvestrum/Sierra Leone/Scarcies_extent_shapefile/Scarcies_extent.shp")
@@ -47,11 +43,25 @@ mangroves <- raster("/Users/javipatron/Library/Mobile Documents/com~apple~CloudD
 
 ```
 
+## **Visualize the data**
 
+The following image is a screenshot showing the visualization of the data through the interactive map displayed below.
 
-## **II. Visualize Shape files with tmap**
+![](data-map.png){width="70%"}
 
-The map below shows the area of interest highlighted in yellow, data points in colors depending on the `rate_time` values, and shorelines in black. You can use the interactive buttons to navigate the map and select the desired layers. To access information related to the rate of change statistics click on each point. **If you want to get a better understanding of the project's scope and the downloaded data, you can zoom out and click on the individual countries to view their respective information.** Also, in the left-hand "layers button", you can navigate to the layer section and remove the "World" layer from the map to improve the level of detail in the satellite images provided by the tmap() function. This will help you analyze the project data more thoroughly.
+**The map below has the following features:**
+
+-   Area of interest in yellow.
+
+-   Data points are represented by different colors, which indicate the shoreline behavior over time. The color determination and count per cluster can be found in [###Table 1].
+
+-   The extent of mangroves is depicted in the color green.
+
+-   **To navigate the map and select specific layers, you can use the interactive buttons provided.**
+
+-   In the left-hand section, there is a "layers button" that you can use to navigate to the different data sets.
+
+-   Removing the "World" layer helps enhance the level of detail in the satellite images provided by the tmap() function.
 
 ```{r, echo = F}
 breaks <- c(-Inf, -5, -1, -0.25, 0, 0.25, 1, 5, Inf)
@@ -81,11 +91,6 @@ color_table <- data.frame(colors = colors,
   }))
   
 
-kable(color_table,
-      caption = "Table 1. Data Points Color Breaks") %>%
-  kable_styling(bootstrap_options = c("striped", "hover"),
-                full_width = FALSE)
-
 ```
 
 ```{r, echo = F, warning = F, message=F}
@@ -108,13 +113,38 @@ tm_shape(mangroves) +
   tm_view(set.view = c(-12.9,9,8.5))
 ```
 
+## Important Insights
 
-## IV. Tables & Graphs
+-   Complicated coastline and model: The coastline and the model used to define shoreline distances are complex due to various environmental factors such as currents, deltas, and islands.
 
-Lets clean and tidy this data
+-   Extreme values: Values greater than 200 meters are more likely to indicate modeling issues rather than real-world coastal change.
+
+-   Noisy data points: The dataset contains 3,920 points categorized as noisy. Additionally, in the year 2001, there are 1,398 fuzzy data points, which have been removed entirely.
+
+-   Median values per year: Using the median values, a linear model suggests an erosion rate of 0.304 meters per year, indicating a potential loss or erosion of 30.4 centimeters annually.
+
+-   Mean values per year: Running a linear model on the mean values indicates that for every one unit increase in year, the mean shoreline distance is projected to grow by 1.4 meters.
+
+## Questions: 
+
+1.  Focus on erosion data points: Should the focus be on data points that show erosion related to sea-level rise, rather than a broader shoreline analysis?
+
+2.  Correlation with mangrove presence: Are we interested on the correlation between shoreline movement and the presence of mangroves?
+
+3.  Winsorize function for outliers: Should the Winsorize() function be used to control outliers by setting maximum and minimum points for shoreline erosion?
+
+## Data Appendices
+
+### Table 1
+
+```{r}
+kable(color_table,
+      caption = "Table 1. Data Points Color Breaks") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"),
+                full_width = FALSE)
+```
 
 ```{r, include = F}
-
 
 tidy <- scarcies_rate_change %>%
   select(OBJECTID, uid, rate_time, sig_time, se_time, certainty, outl_time, starts_with("dist_"), starts_with("20")) %>%
@@ -127,8 +157,7 @@ tidy <- scarcies_rate_change %>%
 
 ```
 
-
-```{r}
+```{r, include = F}
 # Identify the noisy points
 # Convert list column to rows using unnest_tokens
 noisy_points <- tidy |> 
@@ -146,7 +175,6 @@ rows_to_remove <- noisy_points %>%
 tidy_filtered <- tidy %>%
   anti_join(rows_to_remove) |>  # Remove the rows found in rows_to_remove
   dplyr::select(-outl_time, -certainty)  # Remove outl_time and certainty columns
-
 
 yearly_summary <- tidy_filtered %>%
   as.data.frame() %>%
@@ -167,19 +195,36 @@ yearly_summary_long <- yearly_summary |>
 
 ```
 
-Box plot 
-```{r}
+### Histograms
 
-ggplot(tidy, aes(x = year, y = rate_change_m)) +
-  geom_boxplot(fill = "lightblue") +
-  labs(x = "Year", y = "Rate change") +
-  ggtitle("Rate Change per Year")
+```{r, echo = FALSE}
+# Define a list of colors
+colors <- c("skyblue", "lightgreen", "pink", "orange", "purple", "yellow", "red", "blue", "green", "brown", "gray", "violet", "cyan", "magenta", "coral", "darkgreen", "navy", "maroon", "gold", "sienna", "darkblue")
+
+
+years <- c(2000:2020)
+
+# Iterate through each year from 2000 to 2020
+for (i in seq_along(years)) {
+  # Subset the data for the current year
+  subset_data <- tidy[tidy$year == years[i], ]
+  
+  # Create the histogram plot with a different color for each year
+  plot <- ggplot(subset_data, aes(x = rate_change_m)) +
+    geom_histogram(fill = colors[i], color = "black") +
+    labs(title = paste0("Histogram - Year:", years[i])) +
+    theme_bw() 
+  
+  print(plot)
+}
+
 
 ```
 
-## V. OLS Model
+The values represent the distance from the shoreline of each respective year to the shoreline position in 2021. Negative values indicate that the shoreline was further inland compared to 2021, suggesting shoreline growth. On the other hand, positive values indicate that the shoreline was further erosion or the movement of the shoreline further away from the reference point over time.
 
-Let's now analyze the linear models for both statistical analyses.
+### OLS Model
+
 ```{r,echo = F, warning=F, message=F}
 
 yearly_summary %>%
@@ -194,7 +239,7 @@ yearly_summary %>%
 
 Regarding the Median model, the slope of -0.3 implies that with a one-unit rise in the year, the Median is likely to drop by 0.3 units. This indicates that the land might lose or erode 0.304 meters. Conversely, the slope of the Mean model is 1.4, which indicates that for every one unit increase in the year, the Mean is projected to grow by 1.4.
 
-
+### Linear Model Graph
 
 ```{r,echo = F, warning=F, message=F}
 # create ggplot line plot
@@ -211,7 +256,7 @@ yearly_summary_long |>
   labs(x = "Year", 
        y = "Coastal Movement (m)", 
        color = "Stats_Analysis",
-       title = "Graph #2: Coastal Movement Analysis: Mean and Median Trends",
+       title = "Graph: Coastal Movement Analysis: Mean and Median Trends",
        subtitle = "Project: Scarcies, Sierra Leone (2000-2021)",
        caption = "Data Source: Digital Earth Africa") +
   theme_classic() +
@@ -234,12 +279,13 @@ yearly_summary_long |>
 
 ```
 
+### Annual Shoreline Change Rates
 
-
-
-## VII. Rate Time Values Analysis: Webpage vs. OLS Analysis by Year
+#### Webpage vs. OLS Analysis by Year
 
 This code is comparing the `rate_time` values obtained from a webpage with those obtained from an OLS analysis for each year, to identify any differences between the two.
+
+#### Table 2
 
 ```{r, echo = F, warning=F, message=F}
 
@@ -252,7 +298,7 @@ lm_test <- tidy_filtered |>
          linear_slope = map_dbl(linear_coef, 2)) |> 
   select(-c(linear, linear_coef))
 
-kable(head(lm_test), caption = "Table 4. Comparison of the First Six Data Points ") %>%
+kable(head(lm_test), caption = "Table 2. Comparison of the First Six Data Points ") %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 
 
@@ -262,14 +308,3 @@ mean(lm_test$linear_slope)
 ```
 
 This table and results provides a comparison between the `rate_time` variable obtained from the digital analysis and the manually computed `linear model`. In the presented table, the first 6 rows of results exhibit the `rate_time` value from Digital Africa and the `linear_slope` value calculated manually. To evaluate the model's overall fit, I computed the mean rate_time value, which equaled 0.2033 meters. Furthermore, the linear slope analysis generated a value of 0.2199, which closely aligns with the mean rate_time.
-
-
-
-## Overall
-
-The OLS line from the median says that we have a trend of 0.304 meters per year. meaning that in 30 years the SLR will increase on average 9.12 meters.
-
-On the other hand the analysis taking all points into consideration says that on average the coast will grow 6 meters
-
-
-

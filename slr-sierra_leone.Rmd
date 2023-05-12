@@ -145,7 +145,7 @@ tm_shape(mangroves) +
 ## **III. Rate of change attribute descriptions**
 
 | **Attribute** | **Description**                                                                                                                                                                                                                                                                                                                                                                                                                            |
-|-------------------------|-----------------------------------------------|
+|-------------------------|----------------------------------------------|
 | rate_time     | Annual rates of change (in metres per year) calculated by linearly regressing annual shoreline distances against time (excluding outliers). Negative values indicate retreat and positive values indicate growth.                                                                                                                                                                                                                          |
 | sig_time      | Significance (p-value) of the linear relationship between annual shoreline distances and time. Small values (e.g. p-value \< 0.01) may indicate a coastline is undergoing consistent coastal change through time.                                                                                                                                                                                                                          |
 | se_time       | Standard error (in metres) of the linear relationship between annual shoreline distances and time. This can be used to generate confidence intervals around the rate of change given by rate_time (e.g. 95% confidence interval = se_time \* 1.96).                                                                                                                                                                                        |
@@ -162,10 +162,11 @@ tm_shape(mangroves) +
 ```
 
 ## IV. Tables & Graphs
+
 After reading and cleaning the data, we made the following significant changes or modifications to the original data:
 
-1) We removed all data from the year 2001 due to its unreliability, which contained many zero values.
-2) We applied the winsorize function to reduce the impact of outliers in the dataset.
+1)  We removed all data from the year 2001 due to its unreliability, which contained many zero values.
+2)  We applied the winsorize function to reduce the impact of outliers in the dataset.
 
 ```{r, include = F}
 
@@ -409,9 +410,6 @@ mean(lm_test$linear_slope)
 
 This table and results provides a comparison between the `rate_time` variable obtained from the digital analysis and the manually computed `linear model`. In the presented table, the first 6 rows of results exhibit the `rate_time` value from Digital Africa and the `linear_slope` value calculated manually. To evaluate the model's overall fit, I computed the mean rate_time value, which equaled 0.2033 meters. Furthermore, the linear slope analysis generated a value of 0.2199, which closely aligns with the mean rate_time.
 
-
-
-
 ```{r}
 # Define the ranges of interest
 ranges <- c(-Inf, -100, -50, -25,-1, 0, 1, 25, 50, 100, Inf)
@@ -427,4 +425,3 @@ df_counts <- data.frame(Range = names(counts), Count = as.vector(counts))
 
 
 ```
-
